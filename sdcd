@@ -1,0 +1,182 @@
+#!/bin/sh
+
+usage() {
+    echo "Usage: $(basename "$0") <options>"
+    echo
+    echo "Required options:"
+    echo "  -h | --server-host <server host>"
+    echo "  -p | --server-port <server port>"
+    echo "  -u | --user <user name>"
+    echo "  -k | --private-key-content <private key content>"
+    echo "  -d | --dest-directory <dest directory>"
+    echo "  -t | --docker-compose-template-file <docker-compose template file>"
+    echo
+    echo "Optional options:"
+    echo "  --debug"
+    echo "  --help"
+}
+
+uuid() {
+    cat /proc/sys/kernel/random/uuid
+}
+
+gen_private_key() {
+    content=$1
+    private_key=/tmp/sdcd-pk-$(uuid)
+
+    echo "$content" > "$private_key"
+
+    echo "$private_key"
+}
+
+envsubst() {
+    file=$1
+    content=$(eval "cat <<EOF
+$(< "$file")
+EOF
+" 2> /dev/null)
+
+    echo "$content"
+}
+
+gen_docker_compose_file() {
+    template_file=$1
+    docker_compose_file=/tmp/sdcd-dc-$(uuid)
+
+    envsubst "$template_file" > "$docker_compose_file"
+
+    echo "$docker_compose_file"
+}
+
+# main
+
+if ! command -v ssh > /dev/null 2>&1; then
+    echo "missing dependency: OpenSSH"
+    exit 1
+fi
+
+# parse cli
+args=()
+required_args=(-h -p -u -k -d -t)
+missing_args=()
+while [ $# -gt 0 ]; do
+    key=$1
+
+    case $key in
+        -h|--server-host)
+            server_host="$2"
+            shift
+
+            args+=(-h)
+            ;;
+        -p|--server-port)
+            server_port="$2"
+            shift
+
+            args+=(-p)
+            ;;
+        -u|--user)
+            user="$2"
+            shift
+
+            args+=(-u)
+            ;;
+        -k|--private-key-content)
+            private_key_content="$2"
+            shift
+
+            args+=(-k)
+            ;;
+        -d|--dest-directory)
+            dest_directory="$2"
+            shift
+
+            args+=(-d)
+            ;;
+        -t|--docker-compose-template-file)
+            docker_compose_template_file="$2"
+            shift
+
+            args+=(-t)
+            ;;
+        --debug)
+            debug=true
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $key $2"
+            usage
+            exit 2
+            ;;
+    esac
+
+    shift
+done
+
+for required_arg in "${required_args[@]}"; do
+    found_flag=1
+
+    for arg in "${args[@]}"; do
+        if [ "$arg" = "$required_arg" ]; then
+            found_flag=0
+            break
+        fi
+    done
+    if [ "$found_flag" -eq 1 ]; then
+        missing_args+=("$required_arg")
+    fi
+done
+
+if [ ${#missing_args[@]} -gt 0 ]; then
+    echo "required options ${missing_args[@]} is missing"
+    usage
+    exit 2
+fi
+
+if [ "$debug" = true ]; then
+    echo "$server_host"
+    echo "$server_port"
+    echo "$user"
+    echo "$private_key_content"
+    echo "$dest_directory"
+    echo "$docker_compose_template_file"
+fi
+
+# create ssh private key
+private_key=$(gen_private_key "$private_key_content")
+chmod 0600 "$private_key"
+
+# create docker-compose file
+docker_compose_file=$(gen_docker_compose_file "$docker_compose_template_file")
+
+echo "> remote: check docker-compose in present"
+command ssh -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
+if ! command -v docker-compose > /dev/null 2>&1; then
+    echo "missing dependency: docker-compose"
+fi
+EOF
+
+echo "> remote: ensure $dest_directory is placed"
+command ssh -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
+mkdir -p $dest_directory
+EOF
+
+echo "> remote: generating docker-compose.yml"
+command scp -i "$private_key" -P "$server_port" "$docker_compose_file" "$user"@"$server_host":"$dest_directory"/docker-compose.yml
+
+echo "> remote: compose docker containers"
+command ssh -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
+cd $dest_directory
+docker-compose pull
+docker-compose up -d
+EOF
+
+# clean
+echo "> post: clean $private_key"
+rm "$private_key"
+
+echo "> post: clean $docker_compose_file"
+rm "$docker_compose_file"

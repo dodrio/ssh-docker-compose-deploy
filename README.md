@@ -18,7 +18,7 @@ export ssh_private_key_content='...'
 sdcd -h xxx.xxx.xxx.xxx \
      -p 22 \
      -u deploy \
-     -k '$ssh_private_key_content' \
+     -k "$ssh_private_key_content" \ # note: use double quotation marks here
      -d '~/ghost-blog' \
      -t /path/to/ghost-blog-docker-compose-yml-template
 ```

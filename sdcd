@@ -153,22 +153,22 @@ chmod 0600 "$private_key"
 docker_compose_file=$(gen_docker_compose_file "$docker_compose_template_file")
 
 echo "> remote: check docker-compose in present"
-command ssh -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
+command ssh -o StrictHostKeyChecking=No -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
 if ! command -v docker-compose > /dev/null 2>&1; then
     echo "missing dependency: docker-compose"
 fi
 EOF
 
 echo "> remote: ensure $dest_directory is placed"
-command ssh -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
+command ssh -o StrictHostKeyChecking=No -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
 mkdir -p $dest_directory
 EOF
 
 echo "> remote: generating docker-compose.yml"
-command scp -i "$private_key" -P "$server_port" "$docker_compose_file" "$user"@"$server_host":"$dest_directory"/docker-compose.yml
+command scp -o StrictHostKeyChecking=No -i "$private_key" -P "$server_port" "$docker_compose_file" "$user"@"$server_host":"$dest_directory"/docker-compose.yml
 
 echo "> remote: compose docker containers"
-command ssh -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
+command ssh -o StrictHostKeyChecking=No -T -i "$private_key" -p "$server_port" "$user"@"$server_host" -- <<EOF
 cd $dest_directory
 docker-compose pull
 docker-compose up -d

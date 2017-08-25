@@ -32,6 +32,8 @@ Template accept `${VAR}` style placeholder, and the value is evaluated from shel
 Create a template YAML file:
 
 ```yaml
+version: '2'
+
 services:
   ghost:
     image: ghost:${GHOST_VERSION_TAG}
@@ -51,6 +53,8 @@ export GHOST_VERSION_TAG=1.6.0-alpine
 Generated YAML file:
 
 ```yaml
+version: '2'
+
 services:
   ghost:
     image: ghost:1.6.0-alpine
